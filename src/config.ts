@@ -44,9 +44,18 @@ const schema = z.object({
 const env = schema.parse(process.env);
 const isProd = env.NODE_ENV === "production";
 
-function parseKey(b64: string): Buffer {
+/** Kunci AES-256 dari base64. Toleran salah tempel di dashboard: spasi, tanda kutip, awalan "ENCRYPTION_KEY=". */
+function parseKey(raw: string, name = "ENCRYPTION_KEY"): Buffer {
+  const b64 = raw
+    .trim()
+    .replace(/^[A-Z_]+=/, "")
+    .replace(/^["']|["']$/g, "")
+    .trim();
   const key = Buffer.from(b64, "base64");
-  if (key.length !== 32) throw new Error("ENCRYPTION_KEY harus 32 byte (base64)");
+  if (key.length !== 32) {
+    // Nilai kunci tidak pernah ditulis ke log — hanya panjangnya
+    throw new Error(`${name} harus 32 byte base64 (44 karakter, diakhiri "="); terbaca ${b64.length} karakter → ${key.length} byte`);
+  }
   return key;
 }
 
@@ -61,7 +70,9 @@ export const config = {
   databaseUrl: env.DATABASE_URL,
   // Dev tanpa kunci → kunci tetap khusus dev (JANGAN dipakai produksi; dicegah di atas)
   encryptionKey: env.ENCRYPTION_KEY ? parseKey(env.ENCRYPTION_KEY) : Buffer.alloc(32, 7),
-  previousKeys: env.ENCRYPTION_KEYS_PREVIOUS.split(",").filter(Boolean).map(parseKey),
+  previousKeys: env.ENCRYPTION_KEYS_PREVIOUS.split(",")
+    .filter((k) => k.trim())
+    .map((k) => parseKey(k, "ENCRYPTION_KEYS_PREVIOUS")),
   cookieSecure: env.COOKIE_SECURE ? env.COOKIE_SECURE === "true" : isProd,
   sessionCookie: "dbr_session",
   roblox: {

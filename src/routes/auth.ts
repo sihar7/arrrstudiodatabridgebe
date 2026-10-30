@@ -13,7 +13,8 @@ import { rateLimit } from "@/lib/rateLimit";
 import { effectivePlan } from "@/lib/plans";
 import { permissionsOf } from "@/lib/rbac";
 import { slugify } from "@/lib/slug";
-import { presentUser, requireAuth, type Env } from "@/middleware/auth";
+import { promoteAdminWorkspaces } from "@/lib/admin";
+import { isAdminUser, presentUser, requireAuth, type Env } from "@/middleware/auth";
 
 const email = z.string().trim().toLowerCase().email().max(254);
 const password = z.string().min(8, "At least 8 characters").max(200);
@@ -78,6 +79,7 @@ export const authRoutes = new Hono<Env>()
     const passwordHash = await hashPassword(input.password);
     // Setiap akun baru mendapat workspace pribadi sebagai owner
     const u = await createAccount({ name: input.name, email: input.email, passwordHash, locale: input.locale ?? "en" });
+    if (isAdminUser(u)) await promoteAdminWorkspaces();
     await startSession(c, u.id);
     return ok(c, { user: presentUser(u), workspaces: await workspacesOf(u.id) }, 201);
   })
@@ -86,6 +88,7 @@ export const authRoutes = new Hono<Env>()
     const [u] = await db.select().from(users).where(eq(users.email, input.email)).limit(1);
     const valid = await verifyPassword(input.password, u?.passwordHash ?? DUMMY_HASH);
     if (!u || !valid) throw new ApiError(401, "INVALID_CREDENTIALS", "Email or password is incorrect");
+    if (isAdminUser(u)) await promoteAdminWorkspaces();
     await startSession(c, u.id);
     return ok(c, { user: presentUser(u), workspaces: await workspacesOf(u.id) });
   })

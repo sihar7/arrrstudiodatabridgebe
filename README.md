@@ -28,8 +28,9 @@ The web proxies `/api/v1/*` to the API (`next.config.ts` rewrites), so the sessi
 | `ENCRYPTION_KEY` | 32 random bytes, base64. Generate with `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. **Never change it later**: it encrypts the stored Roblox keys and tokens. To rotate, move the old key to `ENCRYPTION_KEYS_PREVIOUS`. |
 | `ROBLOX_OAUTH_CLIENT_ID` | From Creator Dashboard → OAuth 2.0 Apps |
 | `ROBLOX_OAUTH_CLIENT_SECRET` | Same app |
-| `ADMIN_EMAILS` | Comma-separated emails that can open `/admin` |
-| `ADMIN_ROBLOX_USERNAMES` | Optional: Roblox usernames that can open `/admin` |
+| `ADMIN_EMAIL` | Admin login email (the account is created on API start) |
+| `ADMIN_PASSWORD` | Admin password, at least 12 characters. Changing it changes the password on the next start and signs out old admin sessions. |
+| `ADMIN_EMAILS` | Optional extra admins (comma-separated). They register normally with that email and password. |
 | `QRIS_IMAGE_URL` | `https://databridge.arrrstudio.com/brand/qris.png` (put the QRIS image in `web/public/brand/qris.png`) |
 | `QRIS_MERCHANT_NAME` | `ARRR Studio` |
 | `RUN_WORKER` | `true` (the migration worker runs inside the API service) |
@@ -56,7 +57,10 @@ Scopes:
 If Roblox names a scope differently, adjust `ROBLOX_OAUTH_CONNECT_SCOPES`. An unreviewed app is limited to 10 users; submit it for review before launch.
 
 ## Admin
-There is no separate admin account. Sign in with an account whose email is listed in `ADMIN_EMAILS` (or whose linked Roblox username is in `ADMIN_ROBLOX_USERNAMES`). The **Admin** menu then appears in the sidebar at `/admin`. Every other account gets a 404.
+- On every API start, an admin account is created or updated from `ADMIN_EMAIL` and `ADMIN_PASSWORD`. Sign in at `/login` with that **email and password**. The **Admin** menu then appears in the sidebar at `/admin`. Every other account gets a 404.
+- Admin access is **email and password only**. An admin account can't be linked to Roblox. Accounts created through "Continue with Roblox" have no email, so they can never become admin. Any Roblox link on an admin account is removed on start.
+- Workspaces owned by an admin are **Enterprise** automatically.
+- Admin → System → **Reset all data** (type `RESET ALL DATA`) deletes every user except admins, plus all workspaces, connections, projects, migrations and orders. The admin keeps a fresh Enterprise workspace.
 
 ## Local development
 ```bash

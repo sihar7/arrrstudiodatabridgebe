@@ -21,6 +21,14 @@ export type AuthUser = {
 export type WorkspaceCtx = { id: string; name: string; slug: string; type: string; plan: string; planExpiresAt: Date | null; role: Role };
 export type Env = { Variables: { user: AuthUser; sessionId: string; workspace: WorkspaceCtx } };
 
+/**
+ * Admin = email terdaftar di env + punya password + TIDAK tertaut Roblox.
+ * Akun dari "Masuk dengan Roblox" tidak punya email (dan tidak bisa menambahkannya) → tidak mungkin jadi admin.
+ */
+export function isAdminUser(u: Pick<typeof users.$inferSelect, "email" | "passwordHash" | "robloxUserId">): boolean {
+  return !!u.email && !!u.passwordHash && !u.robloxUserId && config.adminEmails.includes(u.email.toLowerCase());
+}
+
 /** Bentuk user aman untuk klien (tanpa hash password). */
 export function presentUser(u: typeof users.$inferSelect): AuthUser {
   return {
@@ -29,9 +37,7 @@ export function presentUser(u: typeof users.$inferSelect): AuthUser {
     email: u.email,
     locale: u.locale,
     hasPassword: !!u.passwordHash,
-    isAdmin:
-      (!!u.email && config.adminEmails.includes(u.email.toLowerCase())) ||
-      (!!u.robloxUsername && config.adminRobloxUsernames.includes(u.robloxUsername.toLowerCase())),
+    isAdmin: isAdminUser(u),
     roblox: u.robloxUserId
       ? { userId: u.robloxUserId, username: u.robloxUsername, displayName: u.robloxDisplayName, avatarUrl: u.robloxAvatarUrl }
       : null,
@@ -96,7 +102,7 @@ async function loadWorkspace(c: Context<Env>, wsId: string) {
   c.set("workspace", { ...row, plan: effectivePlan(row.plan, row.planExpiresAt) });
 }
 
-/** Panel admin platform (ADMIN_EMAILS / ADMIN_ROBLOX_USERNAMES). */
+/** Panel admin platform — admin hanya email + password (lihat isAdminUser). Non-admin = 404. */
 export const requireAdmin: MiddlewareHandler<Env> = async (c, next) => {
   if (!c.get("user").isAdmin) throw new ApiError(404, "NOT_FOUND", "Endpoint not found");
   await next();

@@ -36,9 +36,12 @@ const schema = z.object({
   MIGRATION_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(4),
   // Hanya dev/demo: arahkan Open Cloud & OAuth ke server tiruan (scripts/mock-roblox.ts). Produksi: kosong.
   OC_BASE_URL: z.string().url().optional(),
-  // Admin platform (panel /admin): email dan/atau username Roblox, dipisah koma
+  // Admin platform (panel /admin) — HANYA email + password, tidak pernah lewat Roblox.
+  // ADMIN_EMAIL + ADMIN_PASSWORD: akun admin dibuat/diperbarui otomatis saat API start (workspace Enterprise).
+  ADMIN_EMAIL: z.string().trim().toLowerCase().email().optional(),
+  ADMIN_PASSWORD: z.string().min(12, "ADMIN_PASSWORD minimal 12 karakter").optional(),
+  // Admin tambahan (opsional, dipisah koma) — tetap harus login dengan email & password
   ADMIN_EMAILS: z.string().optional().default(""),
-  ADMIN_ROBLOX_USERNAMES: z.string().optional().default(""),
   // Gambar QRIS statis untuk pembayaran manual (URL publik, mis. /brand/qris.png di web)
   QRIS_IMAGE_URL: z.string().optional().default(""),
   QRIS_MERCHANT_NAME: z.string().optional().default("ARRR Studio"),
@@ -89,8 +92,8 @@ export const config = {
   runWorker: env.RUN_WORKER === "true",
   ocRps: env.OC_RPS_PER_UNIVERSE,
   migrationConcurrency: env.MIGRATION_CONCURRENCY,
-  adminEmails: env.ADMIN_EMAILS.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean),
-  adminRobloxUsernames: env.ADMIN_ROBLOX_USERNAMES.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean),
+  adminEmails: [...new Set([env.ADMIN_EMAIL ?? "", ...env.ADMIN_EMAILS.split(",")].map((x) => x.trim().toLowerCase()).filter(Boolean))],
+  bootstrapAdmin: env.ADMIN_EMAIL && env.ADMIN_PASSWORD ? { email: env.ADMIN_EMAIL, password: env.ADMIN_PASSWORD } : null,
   qris: { imageUrl: env.QRIS_IMAGE_URL, merchant: env.QRIS_MERCHANT_NAME },
   sessionTtlDays: 30,
 };

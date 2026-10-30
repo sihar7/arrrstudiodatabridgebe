@@ -10,7 +10,7 @@ import { assertWithin } from "@/lib/plans";
 import { decryptSecret, encryptSecret, randomToken, safeEqual, sha256 } from "@/lib/crypto";
 import { can } from "@/lib/rbac";
 import { rateLimit } from "@/lib/rateLimit";
-import type { Env } from "@/middleware/auth";
+import { isAdminUser, type Env } from "@/middleware/auth";
 import { authorizeUrl, exchangeCode, grantedUniverses, pkce, revokeToken, userInfo, type RobloxProfile } from "@/roblox/oauth";
 import { createAccount, startSession } from "./auth";
 import { keyInfoFromOAuth } from "./connections";
@@ -76,6 +76,8 @@ export const robloxAuthRoutes = new Hono<Env>()
     if (intent !== "login") {
       const u = await sessionUser(c);
       if (!u) return fail("UNAUTHENTICATED");
+      // Akun admin tidak boleh ditautkan ke Roblox (admin hanya email + password)
+      if (intent === "link" && isAdminUser(u)) return fail("ADMIN_NO_ROBLOX", "/dashboard/settings");
       userId = u.id;
     }
     if (intent === "connect") {
@@ -150,6 +152,8 @@ export const robloxAuthRoutes = new Hono<Env>()
     /* ── Tautkan akun Roblox ke akun yang sedang masuk ── */
     if (st.intent === "link") {
       await revokeToken(tokens.refreshToken);
+      const [me] = await db.select().from(users).where(eq(users.id, st.userId!)).limit(1);
+      if (!me || isAdminUser(me)) return fail("ADMIN_NO_ROBLOX");
       const [taken] = await db.select({ id: users.id }).from(users).where(eq(users.robloxUserId, profile.userId)).limit(1);
       if (taken && taken.id !== st.userId) return fail("ROBLOX_IN_USE");
       await db.update(users).set(profileFields(profile)).where(eq(users.id, st.userId!));
@@ -213,6 +217,10 @@ export const robloxAuthRoutes = new Hono<Env>()
     }
     // Tautkan profil Roblox ke user bila belum tertaut & belum dipakai akun lain
     const [owner] = await db.select({ id: users.id }).from(users).where(eq(users.robloxUserId, profile.userId)).limit(1);
-    if (!owner) await db.update(users).set(profileFields(profile)).where(and(eq(users.id, st.userId!), isNull(users.robloxUserId)));
+    // (tidak untuk akun admin — admin tidak pernah tertaut Roblox)
+    const [actor] = await db.select().from(users).where(eq(users.id, st.userId!)).limit(1);
+    if (!owner && actor && !isAdminUser(actor)) {
+      await db.update(users).set(profileFields(profile)).where(and(eq(users.id, st.userId!), isNull(users.robloxUserId)));
+    }
     return c.redirect(web(`/dashboard/connections?connected=${id}`));
   });

@@ -5,12 +5,14 @@ import { config } from "@/config";
 import { db, pingDb } from "@/db";
 import { billingOrders, migrations, robloxConnections, users, workspaceMembers, workspaces } from "@/db/schema";
 import { body, notFound, ok } from "@/lib/http";
+import { resetAllData } from "@/lib/admin";
+import { ApiError } from "@/lib/http";
 import { effectivePlan } from "@/lib/plans";
 import type { Env } from "@/middleware/auth";
 import { approveOrder, presentOrder } from "./billing";
 
 // Panel admin platform: ringkasan, order QRIS (setujui/tolak), user, workspace (ubah paket), migrasi, sistem.
-// Akses: requireAdmin (ADMIN_EMAILS / ADMIN_ROBLOX_USERNAMES) — dipasang di app.ts.
+// Akses: requireAdmin (email admin di env + password, tanpa Roblox) — dipasang di app.ts.
 
 const page = (c: { req: { query: (k: string) => string | undefined } }) => ({
   limit: Math.min(Number(c.req.query("limit")) || 50, 200),
@@ -141,6 +143,14 @@ export const adminRoutes = new Hono<Env>()
       .limit(limit)
       .offset(offset);
     return ok(c, rows);
+  })
+  // Zona bahaya: hapus semua data platform (akun admin & sesi ini dipertahankan)
+  .post("/reset", async (c) => {
+    const { confirm } = await body(c, z.object({ confirm: z.string() }));
+    if (confirm !== "RESET ALL DATA") throw new ApiError(400, "CONFIRM_RESET", "Type RESET ALL DATA to confirm");
+    const counts = await resetAllData(c.get("sessionId"));
+    console.warn(`[admin] RESET semua data oleh ${c.get("user").email}`, counts);
+    return ok(c, counts);
   })
   .get("/system", async (c) => {
     let dbMs: number | null = null;

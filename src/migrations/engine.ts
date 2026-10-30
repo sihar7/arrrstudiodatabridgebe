@@ -125,21 +125,14 @@ async function processItem(ctx: Ctx, item: typeof migrationItems.$inferSelect, s
     const size = Buffer.byteLength(JSON.stringify(src.value ?? null));
     const checksum = md5(src.value);
 
-    const existing = await getEntry(dstAuth, ctx.dst.ref, item.destinationKey);
-    if (existing) {
-      if (m.conflictStrategy === "skip_existing") return finish("skipped", { size, checksum, errorCode: "EXISTS" });
-      if (m.conflictStrategy !== "overwrite") return finish("conflict", { size, checksum, errorCode: "EXISTS" });
-    }
-    // Dry run: berhenti sebelum menulis — "success" = akan ditulis
-    if (m.dryRun) return finish("success", { size, checksum });
-
+    // Tanpa GET cek-tujuan (hemat 1 request/key): overwrite → upsert; selain itu create atomik —
+    // Roblox menolak bila key sudah ada, lalu strategi konflik diterapkan.
     await setItem(item.id, { status: "writing" });
     const body = { value: src.value, users: src.users, attributes: src.attributes };
     try {
-      if (existing) await upsertEntry(dstAuth, ctx.dst.ref, item.destinationKey, body);
+      if (m.conflictStrategy === "overwrite") await upsertEntry(dstAuth, ctx.dst.ref, item.destinationKey, body);
       else await createEntry(dstAuth, ctx.dst.ref, item.destinationKey, body);
     } catch (e) {
-      // Key muncul di tujuan di antara cek & tulis (pemain live) → terapkan strategi konflik
       if (e instanceof OpenCloudError && e.kind === "conflict") {
         return finish(m.conflictStrategy === "skip_existing" ? "skipped" : "conflict", { size, checksum, errorCode: "EXISTS" });
       }
@@ -158,6 +151,46 @@ async function processItem(ctx: Ctx, item: typeof migrationItems.$inferSelect, s
     const code = e instanceof OpenCloudError ? `ROBLOX_${e.kind.toUpperCase()}` : "INTERNAL";
     const msg = e instanceof Error ? e.message : String(e);
     return finish("failed", { errorCode: code, errorMessage: msg.slice(0, 300) });
+  }
+}
+
+/**
+ * Dry run kilat: daftar SEMUA key tujuan (256 key/request) lalu cocokkan dengan key sumber di memori —
+ * tanpa membaca isi tiap key. 42 rb key ≈ ±330 request (bukan ±84 rb). Tidak menulis apa pun.
+ */
+async function dryRunFast(ctx: Ctx, token: string, dstAuth: () => Promise<OcAuth>): Promise<"done" | "stopped"> {
+  const { m } = ctx;
+  const existing = new Set<string>();
+  let cursor: string | undefined;
+  do {
+    if ((await runState(m.id, token)) !== "running") return "stopped";
+    const page = await listEntryKeys(await dstAuth(), ctx.dst.ref, { pageToken: cursor });
+    for (const k of page.keys) existing.add(k);
+    cursor = page.nextPageToken ?? undefined;
+  } while (cursor);
+  await log(m.id, "info", `Destination already has ${existing.size} key(s)`);
+
+  for (;;) {
+    if ((await runState(m.id, token)) !== "running") return "stopped";
+    const batch = await db
+      .select({ id: migrationItems.id, destinationKey: migrationItems.destinationKey })
+      .from(migrationItems)
+      .where(and(eq(migrationItems.migrationId, m.id), eq(migrationItems.status, "pending")))
+      .limit(2000);
+    if (!batch.length) return "done";
+    const groups: Record<"success" | "skipped" | "conflict", string[]> = { success: [], skipped: [], conflict: [] };
+    for (const it of batch) {
+      if (!existing.has(it.destinationKey) || m.conflictStrategy === "overwrite") groups.success.push(it.id);
+      else groups[m.conflictStrategy === "skip_existing" ? "skipped" : "conflict"].push(it.id);
+    }
+    for (const [status, ids] of Object.entries(groups) as [ItemStatus, string[]][]) {
+      if (!ids.length) continue;
+      await db
+        .update(migrationItems)
+        .set({ status, errorCode: status === "success" ? null : "EXISTS", errorMessage: null })
+        .where(inArray(migrationItems.id, ids));
+    }
+    await recount(m.id);
   }
 }
 
@@ -189,6 +222,7 @@ export async function runMigration(id: string): Promise<void> {
     }
 
     await db.update(migrations).set({ currentOperation: m.dryRun ? "simulating" : "copying" }).where(eq(migrations.id, id));
+    if (m.dryRun && (await dryRunFast(ctx, token, dstAuth)) === "stopped") return await settleStop(id, token);
     const batchSize = config.migrationConcurrency * 4;
     for (;;) {
       if ((await runState(id, token)) !== "running") return await settleStop(id, token);

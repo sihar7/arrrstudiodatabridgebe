@@ -35,7 +35,7 @@ function kindOf(status: number): OpenCloudErrorKind {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/* ── Limiter per universe: interval minimum antar request (token bucket sederhana, in-process) ── */
+/* ── Limiter per universe & jenis (baca/tulis/list): interval minimum antar request (in-process) ── */
 const nextSlot = new Map<string, number>();
 async function throttle(universe: string) {
   const gap = 1000 / config.ocRps;
@@ -51,7 +51,11 @@ async function request<T>(path: string, init: ReqInit = {}): Promise<T> {
   const attempts = init.attempts ?? 3;
   let lastErr: OpenCloudError | null = null;
   for (let attempt = 0; attempt < attempts; attempt++) {
-    if (init.universe) await throttle(init.universe);
+    // Kuota DataStore Roblox per experience terpisah untuk baca / tulis / list → antrean limiter terpisah
+    if (init.universe) {
+      const kind = (init.method ?? "GET") !== "GET" ? "write" : /\/entries\/[^?]/.test(path) ? "read" : "list";
+      await throttle(`${init.universe}:${kind}`);
+    }
     let res: Response;
     try {
       const headers: Record<string, string> = {};

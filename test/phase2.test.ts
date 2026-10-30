@@ -145,9 +145,9 @@ describe("migration engine", () => {
     const m = await waitDone(id);
     assert.equal(writes, before, "dry run must not write");
     assert.equal(m.progress.total, 7);
-    assert.equal(m.progress.success, 5); // akan ditulis
+    assert.equal(m.progress.success, 6); // akan ditulis (dry run kilat tidak membaca isi key)
     assert.equal(m.progress.skipped, 1); // Player_3 sudah ada
-    assert.equal(m.progress.failed, 1); // Bad_1 403
+    assert.equal(m.progress.failed, 0);
     assert.ok(m.lastDryRunAt);
   });
 

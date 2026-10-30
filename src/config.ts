@@ -23,6 +23,13 @@ const schema = z.object({
     .default(
       "openid profile universe-datastores.control:list universe-datastores.objects:list universe-datastores.objects:read universe-datastores.objects:create universe-datastores.objects:update",
     ),
+  // Login user via Discord (Developer Portal → OAuth2). Redirect: <APP_URL>/api/v1/auth/discord/callback
+  DISCORD_CLIENT_ID: z.string().optional().default(""),
+  DISCORD_CLIENT_SECRET: z.string().optional().default(""),
+  // Daftar/login email untuk user biasa (default mati: user pakai Discord; admin tetap email+password)
+  EMAIL_SIGNUP_ENABLED: z.enum(["true", "false"]).optional().default("false"),
+  // "Masuk dengan Roblox" untuk user (default mati)
+  ROBLOX_LOGIN_ENABLED: z.enum(["true", "false"]).optional().default("false"),
   // "Hubungkan dengan Roblox" (OAuth untuk DataStore) hanya bila app OAuth diizinkan scope universe-datastores.*.
   // Default mati: banyak app hanya boleh openid/profile → akses DataStore lewat API key.
   ROBLOX_OAUTH_CONNECT_ENABLED: z.enum(["true", "false"]).optional().default("false"),
@@ -86,8 +93,11 @@ export const config = {
     clientSecret: env.ROBLOX_OAUTH_CLIENT_SECRET,
     connectScopes: env.ROBLOX_OAUTH_CONNECT_SCOPES,
     enabled: !!(env.ROBLOX_OAUTH_CLIENT_ID && env.ROBLOX_OAUTH_CLIENT_SECRET),
+    loginEnabled: !!(env.ROBLOX_OAUTH_CLIENT_ID && env.ROBLOX_OAUTH_CLIENT_SECRET) && env.ROBLOX_LOGIN_ENABLED === "true",
     connectEnabled: !!(env.ROBLOX_OAUTH_CLIENT_ID && env.ROBLOX_OAUTH_CLIENT_SECRET) && env.ROBLOX_OAUTH_CONNECT_ENABLED === "true",
   },
+  discord: { clientId: env.DISCORD_CLIENT_ID, clientSecret: env.DISCORD_CLIENT_SECRET, enabled: !!(env.DISCORD_CLIENT_ID && env.DISCORD_CLIENT_SECRET) },
+  emailSignup: env.EMAIL_SIGNUP_ENABLED === "true",
   redisUrl: env.REDIS_URL,
   runWorker: env.RUN_WORKER === "true",
   ocRps: env.OC_RPS_PER_UNIVERSE,

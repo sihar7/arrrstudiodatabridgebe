@@ -1,5 +1,7 @@
 process.env.DATABASE_URL = "memory://";
 process.env.NODE_ENV = "test";
+process.env.EMAIL_SIGNUP_ENABLED = "true";
+process.env.ROBLOX_LOGIN_ENABLED = "true";
 
 import assert from "node:assert/strict";
 import { eq } from "drizzle-orm";

@@ -17,6 +17,7 @@ export type AuthUser = {
   hasPassword: boolean;
   isAdmin: boolean;
   roblox: { userId: string; username: string | null; displayName: string | null; avatarUrl: string | null } | null;
+  discord: { userId: string; username: string | null; avatarUrl: string | null } | null;
 };
 export type WorkspaceCtx = { id: string; name: string; slug: string; type: string; plan: string; planExpiresAt: Date | null; role: Role };
 export type Env = { Variables: { user: AuthUser; sessionId: string; workspace: WorkspaceCtx } };
@@ -25,8 +26,8 @@ export type Env = { Variables: { user: AuthUser; sessionId: string; workspace: W
  * Admin = email terdaftar di env + punya password + TIDAK tertaut Roblox.
  * Akun dari "Masuk dengan Roblox" tidak punya email (dan tidak bisa menambahkannya) → tidak mungkin jadi admin.
  */
-export function isAdminUser(u: Pick<typeof users.$inferSelect, "email" | "passwordHash" | "robloxUserId">): boolean {
-  return !!u.email && !!u.passwordHash && !u.robloxUserId && config.adminEmails.includes(u.email.toLowerCase());
+export function isAdminUser(u: Pick<typeof users.$inferSelect, "email" | "passwordHash" | "robloxUserId" | "discordUserId">): boolean {
+  return !!u.email && !!u.passwordHash && !u.robloxUserId && !u.discordUserId && config.adminEmails.includes(u.email.toLowerCase());
 }
 
 /** Bentuk user aman untuk klien (tanpa hash password). */
@@ -41,6 +42,7 @@ export function presentUser(u: typeof users.$inferSelect): AuthUser {
     roblox: u.robloxUserId
       ? { userId: u.robloxUserId, username: u.robloxUsername, displayName: u.robloxDisplayName, avatarUrl: u.robloxAvatarUrl }
       : null,
+    discord: u.discordUserId ? { userId: u.discordUserId, username: u.discordUsername, avatarUrl: u.discordAvatarUrl } : null,
   };
 }
 

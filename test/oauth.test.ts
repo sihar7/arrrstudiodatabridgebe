@@ -1,5 +1,7 @@
 process.env.DATABASE_URL = "memory://";
 process.env.NODE_ENV = "test";
+process.env.EMAIL_SIGNUP_ENABLED = "true";
+process.env.ROBLOX_LOGIN_ENABLED = "true";
 process.env.ROBLOX_OAUTH_CLIENT_ID = "test-client";
 process.env.ROBLOX_OAUTH_CLIENT_SECRET = "test-secret";
 process.env.ROBLOX_OAUTH_CONNECT_ENABLED = "true";

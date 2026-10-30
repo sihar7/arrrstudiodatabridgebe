@@ -71,6 +71,8 @@ export const robloxAuthRoutes = new Hono<Env>()
     if (!config.roblox.enabled) return fail("ROBLOX_DISABLED");
     if (!q.success) return fail("VALIDATION_ERROR");
     const { intent, workspaceId, connectionId } = q.data;
+    // Login/tautkan Roblox untuk user dimatikan kecuali ROBLOX_LOGIN_ENABLED=true
+    if (intent !== "connect" && !config.roblox.loginEnabled) return fail("ROBLOX_DISABLED");
     let userId: string | undefined;
 
     if (intent !== "login") {

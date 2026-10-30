@@ -1,8 +1,10 @@
-import { and, count, eq } from "drizzle-orm";
+import { and, count, desc, eq, isNull } from "drizzle-orm";
+import { config } from "@/config";
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "@/db";
-import { ROLES, users, workspaceInvites, workspaceMembers, workspaces, type Role } from "@/db/schema";
+import { ROLES, users, workspaceInviteLinks, workspaceInvites, workspaceMembers, workspaces, type Role } from "@/db/schema";
+import { randomToken, sha256 } from "@/lib/crypto";
 import { ApiError, body, forbidden, notFound, ok } from "@/lib/http";
 import { permissionsOf } from "@/lib/rbac";
 import { slugify } from "@/lib/slug";
@@ -75,6 +77,8 @@ export const workspaceRoutes = new Hono<Env>()
         joinedAt: workspaceMembers.createdAt,
         robloxUsername: users.robloxUsername,
         robloxAvatarUrl: users.robloxAvatarUrl,
+        discordUsername: users.discordUsername,
+        discordAvatarUrl: users.discordAvatarUrl,
       })
       .from(workspaceMembers)
       .innerJoin(users, eq(users.id, workspaceMembers.userId))
@@ -142,6 +146,50 @@ export const workspaceRoutes = new Hono<Env>()
       .where(and(eq(workspaceInvites.id, inviteId), eq(workspaceInvites.workspaceId, c.get("workspace").id)))
       .returning({ id: workspaceInvites.id });
     if (!r.length) throw notFound("Invite");
+    return ok(c, { ok: true });
+  })
+  // Link undangan (dibagikan lewat Discord/WA) — token hanya ditampilkan sekali saat dibuat
+  .get("/:id/invite-links", requirePermission("members.manage"), async (c) => {
+    const rows = await db
+      .select()
+      .from(workspaceInviteLinks)
+      .where(and(eq(workspaceInviteLinks.workspaceId, c.get("workspace").id), isNull(workspaceInviteLinks.revokedAt)))
+      .orderBy(desc(workspaceInviteLinks.createdAt));
+    return ok(c, rows.map(({ tokenHash: _t, ...r }) => ({ ...r, active: r.expiresAt > new Date() && (r.maxUses == null || r.uses < r.maxUses) })));
+  })
+  .post("/:id/invite-links", requirePermission("members.manage"), rateLimit({ key: "invite-link", windowMs: 60_000, max: 20 }), async (c) => {
+    const ws = c.get("workspace");
+    const input = await body(
+      c,
+      z.object({
+        role: z.enum(ROLES).default("developer"),
+        days: z.coerce.number().int().min(1).max(30).default(7),
+        maxUses: z.coerce.number().int().min(1).max(100).nullish(),
+      }),
+    );
+    guardOwnerChange(ws.role, null, input.role);
+    const token = randomToken(24);
+    const [row] = await db
+      .insert(workspaceInviteLinks)
+      .values({
+        workspaceId: ws.id,
+        tokenHash: sha256(token),
+        role: input.role,
+        expiresAt: new Date(Date.now() + input.days * 864e5),
+        maxUses: input.maxUses ?? null,
+        createdBy: c.get("user").id,
+      })
+      .returning();
+    const { tokenHash: _t, ...rest } = row!;
+    return ok(c, { ...rest, token, url: `${config.appUrl.replace(/\/$/, "")}/invite/${token}` }, 201);
+  })
+  .delete("/:id/invite-links/:linkId", requirePermission("members.manage"), async (c) => {
+    const r = await db
+      .update(workspaceInviteLinks)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(workspaceInviteLinks.id, userIdParam.parse(c.req.param("linkId"))), eq(workspaceInviteLinks.workspaceId, c.get("workspace").id)))
+      .returning({ id: workspaceInviteLinks.id });
+    if (!r.length) throw notFound("Invite link");
     return ok(c, { ok: true });
   })
   .patch("/:id/members/:userId", requirePermission("members.manage"), async (c) => {

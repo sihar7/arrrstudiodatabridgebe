@@ -12,6 +12,8 @@ import { explorerRoutes } from "@/routes/explorer";
 import { migrationRoutes } from "@/routes/migrations";
 import { authRoutes } from "@/routes/auth";
 import { robloxAuthRoutes } from "@/routes/robloxAuth";
+import { discordAuthRoutes } from "@/routes/discordAuth";
+import { inviteRoutes } from "@/routes/invites";
 import { connectionRoutes, robloxRoutes } from "@/routes/connections";
 import { projectRoutes } from "@/routes/projects";
 import { workspaceRoutes } from "@/routes/workspaces";
@@ -36,6 +38,8 @@ app.get("/health", async (c) => {
 const v1 = new Hono<Env>();
 v1.use(csrf);
 v1.route("/auth/roblox", robloxAuthRoutes);
+v1.route("/auth/discord", discordAuthRoutes);
+v1.route("/invites", inviteRoutes);
 v1.route("/auth", authRoutes);
 v1.use("/workspaces/*", requireAuth);
 v1.use("/workspaces", requireAuth);

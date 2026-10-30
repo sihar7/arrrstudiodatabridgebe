@@ -30,6 +30,10 @@ export const users = pgTable("users", {
   robloxUsername: text("roblox_username"),
   robloxDisplayName: text("roblox_display_name"),
   robloxAvatarUrl: text("roblox_avatar_url"),
+  // Login utama user: Discord (identify). Email Discord TIDAK disimpan (akun Discord tidak pernah bisa jadi admin)
+  discordUserId: text("discord_user_id").unique(),
+  discordUsername: text("discord_username"),
+  discordAvatarUrl: text("discord_avatar_url"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -187,6 +191,26 @@ export const workspaceInvites = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("workspace_invites_unique").on(t.workspaceId, t.robloxUserId), index("workspace_invites_roblox_idx").on(t.robloxUserId)],
+);
+
+/** Link undangan workspace: token acak (hanya hash disimpan), role, masa berlaku, batas pakai, bisa dicabut. */
+export const workspaceInviteLinks = pgTable(
+  "workspace_invite_links",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull().unique(),
+    role: text("role", { enum: ROLES }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    maxUses: integer("max_uses"),
+    uses: integer("uses").notNull().default(0),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("workspace_invite_links_ws_idx").on(t.workspaceId)],
 );
 
 export const MIGRATION_STATUS = [

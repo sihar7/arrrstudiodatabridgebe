@@ -26,8 +26,9 @@ The web proxies `/api/v1/*` to the API (`next.config.ts` rewrites), so the sessi
 | `APP_URL` | `https://databridge.arrrstudio.com` |
 | `COOKIE_SECURE` | `true` |
 | `ENCRYPTION_KEY` | 32 random bytes, base64. Generate with `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. **Never change it later**: it encrypts the stored Roblox keys and tokens. To rotate, move the old key to `ENCRYPTION_KEYS_PREVIOUS`. |
-| `ROBLOX_OAUTH_CLIENT_ID` | From Creator Dashboard → OAuth 2.0 Apps |
-| `ROBLOX_OAUTH_CLIENT_SECRET` | Same app |
+| `DISCORD_CLIENT_ID` | Discord Developer Portal → your app → OAuth2 → Client ID |
+| `DISCORD_CLIENT_SECRET` | Same page → Client Secret |
+| `ROBLOX_OAUTH_CLIENT_ID` / `ROBLOX_OAUTH_CLIENT_SECRET` | Optional, can be left empty. Only needed if you later turn on `ROBLOX_LOGIN_ENABLED` or `ROBLOX_OAUTH_CONNECT_ENABLED`. |
 | `ADMIN_EMAIL` | Admin login email (the account is created on API start) |
 | `ADMIN_PASSWORD` | Admin password, at least 12 characters. Changing it changes the password on the next start and signs out old admin sessions. |
 | `ADMIN_EMAILS` | Optional extra admins (comma-separated). They register normally with that email and password. |
@@ -44,7 +45,21 @@ Do **not** set `OC_BASE_URL` in production. It is only for the local mock and is
 - Variable: `API_URL=https://databridge-be.up.railway.app`. This is also the production default, so it can be left unset.
 - Domain: add `databridge.arrrstudio.com`, then create a DNS record `CNAME databridge → cname.vercel-dns.com`.
 
-### 3. Roblox OAuth app
+### 3. Discord app (user login)
+In Discord Developer Portal → OAuth2 → Redirects, add:
+- `https://databridge.arrrstudio.com/api/v1/auth/discord/callback`
+- `http://localhost:3000/api/v1/auth/discord/callback` (local)
+
+The only scope requested is `identify`. No email is read, so a Discord account can never match an admin email.
+
+Accounts and access:
+- Users sign in **only with Discord**.
+- Email sign-up is closed for users (enable it with `EMAIL_SIGNUP_ENABLED=true`). The email and password form on `/login` is for admins.
+- Roblox sign-in is off (enable it with `ROBLOX_LOGIN_ENABLED=true`).
+- DataStore access uses **Open Cloud API keys**.
+- Teams invite people with **invite links**: role, expiry and max uses, revocable. The recipient signs in with Discord and joins.
+
+### 4. Roblox OAuth app (optional)
 Redirect URLs:
 - `https://databridge.arrrstudio.com/api/v1/auth/roblox/callback`
 - `http://localhost:3000/api/v1/auth/roblox/callback` (local)

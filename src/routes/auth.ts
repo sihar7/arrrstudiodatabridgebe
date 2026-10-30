@@ -74,6 +74,10 @@ export async function workspacesOf(userId: string) {
 export const authRoutes = new Hono<Env>()
   .post("/register", rateLimit({ key: "register", windowMs: 60 * 60_000, max: 10 }), async (c) => {
     const input = await body(c, registerSchema);
+    // User biasa daftar lewat Discord; email hanya untuk admin tambahan (ADMIN_EMAILS) kecuali diaktifkan
+    if (!config.emailSignup && !config.adminEmails.includes(input.email)) {
+      throw new ApiError(403, "EMAIL_SIGNUP_DISABLED", "Sign up with Discord");
+    }
     const [exists] = await db.select({ id: users.id }).from(users).where(eq(users.email, input.email)).limit(1);
     if (exists) throw new ApiError(409, "EMAIL_TAKEN", "An account with this email already exists");
     const passwordHash = await hashPassword(input.password);
@@ -87,7 +91,8 @@ export const authRoutes = new Hono<Env>()
     const input = await body(c, loginSchema);
     const [u] = await db.select().from(users).where(eq(users.email, input.email)).limit(1);
     const valid = await verifyPassword(input.password, u?.passwordHash ?? DUMMY_HASH);
-    if (!u || !valid) throw new ApiError(401, "INVALID_CREDENTIALS", "Email or password is incorrect");
+    // Login email hanya untuk admin bila signup email dimatikan — non-admin dapat pesan sama (tidak membocorkan daftar admin)
+    if (!u || !valid || (!config.emailSignup && !isAdminUser(u))) throw new ApiError(401, "INVALID_CREDENTIALS", "Email or password is incorrect");
     if (isAdminUser(u)) await promoteAdminWorkspaces();
     await startSession(c, u.id);
     return ok(c, { user: presentUser(u), workspaces: await workspacesOf(u.id) });
@@ -112,7 +117,9 @@ export const authRoutes = new Hono<Env>()
     return ok(c, { user: presentUser(u!) });
   })
   // Penyedia login yang aktif (tombol "Masuk dengan Roblox" hanya tampil bila app OAuth dikonfigurasi)
-  .get("/providers", (c) => ok(c, { roblox: config.roblox.enabled, robloxConnect: config.roblox.connectEnabled }))
+  .get("/providers", (c) =>
+    ok(c, { discord: config.discord.enabled, roblox: config.roblox.loginEnabled, robloxConnect: config.roblox.connectEnabled, emailSignup: config.emailSignup }),
+  )
   // Lepas tautan Roblox — hanya bila akun punya password (agar tidak terkunci)
   .delete("/roblox", requireAuth, async (c) => {
     const me = c.get("user");

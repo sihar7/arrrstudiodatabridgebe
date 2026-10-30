@@ -1,5 +1,7 @@
 process.env.DATABASE_URL = "memory://";
 process.env.NODE_ENV = "test";
+process.env.EMAIL_SIGNUP_ENABLED = "true";
+process.env.ROBLOX_LOGIN_ENABLED = "true";
 process.env.OC_RPS_PER_UNIVERSE = "1000";
 
 import assert from "node:assert/strict";

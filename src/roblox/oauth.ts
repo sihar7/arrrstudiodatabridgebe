@@ -6,7 +6,7 @@ import { OpenCloudError } from "./openCloud";
 // Roblox OAuth 2.0 (authorization code + PKCE S256, confidential client).
 // Docs: create.roblox.com/docs/cloud/auth/oauth2-reference — access token 15 mnt, refresh token 90 hari & sekali pakai.
 
-const OAUTH = "https://apis.roblox.com/oauth/v1";
+const OAUTH = `${config.ocBase}/oauth/v1`;
 
 export const redirectUri = () => `${config.appUrl.replace(/\/$/, "")}/api/v1/auth/roblox/callback`;
 

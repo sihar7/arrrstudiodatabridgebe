@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "@/db";
-import { datastoreConfigs, robloxConnections } from "@/db/schema";
+import { datastoreConfigs, projects, robloxConnections } from "@/db/schema";
 import { notFound, ok } from "@/lib/http";
 import { rateLimit } from "@/lib/rateLimit";
 import type { Env } from "@/middleware/auth";
@@ -23,6 +23,20 @@ async function loadConfig(workspaceId: string, id: string) {
 }
 
 export const explorerRoutes = new Hono<Env>()
+  // Semua konfigurasi DataStore di workspace (sidebar explorer & wizard migrasi)
+  .get("/configs", async (c) => {
+    const rows = await db
+      .select({ cfg: datastoreConfigs, projectName: projects.name, connectionName: robloxConnections.name, connectionStatus: robloxConnections.status })
+      .from(datastoreConfigs)
+      .innerJoin(projects, eq(projects.id, datastoreConfigs.projectId))
+      .innerJoin(robloxConnections, eq(robloxConnections.id, datastoreConfigs.connectionId))
+      .where(eq(datastoreConfigs.workspaceId, c.get("workspace").id))
+      .orderBy(projects.name, datastoreConfigs.createdAt);
+    return ok(
+      c,
+      rows.map((r) => ({ ...r.cfg, projectName: r.projectName, connection: { id: r.cfg.connectionId, name: r.connectionName, status: r.connectionStatus } })),
+    );
+  })
   .get("/:configId/keys", rateLimit({ key: "explore-keys", windowMs: 60_000, max: 60 }), async (c) => {
     const { ref, conn } = await loadConfig(c.get("workspace").id, c.req.param("configId"));
     const r = await listEntryKeys(await authFor(conn), ref, {

@@ -1,11 +1,14 @@
-import "dotenv/config";
+import dotenv from "dotenv";
 import { z } from "zod";
+
+// Tes harus hermetik: .env dev (mock URL, admin, OAuth) tidak dimuat saat NODE_ENV=test
+if (process.env.NODE_ENV !== "test") dotenv.config({ quiet: true });
 
 // Konfigurasi API — semua nilai dari env, divalidasi sekali saat start.
 const schema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   PORT: z.coerce.number().int().default(8080),
-  APP_URL: z.string().url().default("http://localhost:3000"),
+  APP_URL: z.string().url().optional(),
   DATABASE_URL: z.string().optional().default(""),
   ENCRYPTION_KEY: z.string().optional().default(""),
   ENCRYPTION_KEYS_PREVIOUS: z.string().optional().default(""),
@@ -28,6 +31,8 @@ const schema = z.object({
   OC_RPS_PER_UNIVERSE: z.coerce.number().positive().default(4),
   // Key paralel per job migrasi
   MIGRATION_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(4),
+  // Hanya dev/demo: arahkan Open Cloud & OAuth ke server tiruan (scripts/mock-roblox.ts). Produksi: kosong.
+  OC_BASE_URL: z.string().url().optional(),
   // Admin platform (panel /admin): email dan/atau username Roblox, dipisah koma
   ADMIN_EMAILS: z.string().optional().default(""),
   ADMIN_ROBLOX_USERNAMES: z.string().optional().default(""),
@@ -51,7 +56,8 @@ if (isProd && !env.DATABASE_URL) throw new Error("DATABASE_URL wajib di produksi
 export const config = {
   isProd,
   port: env.PORT,
-  appUrl: env.APP_URL,
+  appUrl: env.APP_URL ?? (isProd ? "https://databridge.arrrstudio.com" : "http://localhost:3000"),
+  ocBase: (isProd ? undefined : env.OC_BASE_URL) ?? "https://apis.roblox.com",
   databaseUrl: env.DATABASE_URL,
   // Dev tanpa kunci → kunci tetap khusus dev (JANGAN dipakai produksi; dicegah di atas)
   encryptionKey: env.ENCRYPTION_KEY ? parseKey(env.ENCRYPTION_KEY) : Buffer.alloc(32, 7),

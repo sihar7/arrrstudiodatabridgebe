@@ -7,7 +7,7 @@ import type { KeyInfo } from "@/db/schema";
 // bisa membedakan; 429/5xx/jaringan di-retry dengan exponential backoff (mulai 1 dtk, hormati Retry-After).
 // Request ber-`universe` melewati limiter per universe (kuota DataStore dibagi dengan server live).
 
-const BASE = "https://apis.roblox.com";
+const BASE = config.ocBase;
 const TIMEOUT_MS = 15_000;
 
 export type OcAuth = { apiKey: string } | { bearer: string };

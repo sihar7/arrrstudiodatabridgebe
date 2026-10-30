@@ -162,8 +162,8 @@ export const datastoreConfigs = pgTable(
     placeId: text("place_id"),
     datastoreName: text("datastore_name").notNull(),
     scope: text("scope").notNull().default("global"),
-    // MVP: hanya Standard; Ordered ditunda (jalur operasi terpisah)
-    datastoreType: text("datastore_type", { enum: ["standard"] }).notNull().default("standard"),
+    // Standard atau Ordered (leaderboard) — kolom teks, enum hanya di TS jadi tanpa migrasi SQL
+    datastoreType: text("datastore_type", { enum: ["standard", "ordered"] }).notNull().default("standard"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

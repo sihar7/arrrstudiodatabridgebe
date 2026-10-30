@@ -20,7 +20,7 @@ const configSchema = z.object({
   placeId: numericId.nullish(),
   datastoreName: dsName,
   scope: dsName.default("global"),
-  datastoreType: z.literal("standard").default("standard"),
+  datastoreType: z.enum(["standard", "ordered"]).default("standard"),
 });
 const uuidParam = z.string().uuid();
 

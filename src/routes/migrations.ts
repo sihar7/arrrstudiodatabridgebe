@@ -96,14 +96,17 @@ async function validate(m: typeof migrations.$inferSelect, real: boolean, plan =
   const d = cfgs.find((x) => x.cfg.id === m.destinationConfigId);
   if (!s || !d) return { ok: false, errors: [{ code: "CONFIG_MISSING" }], warnings };
 
-  const sameStore = s.cfg.universeId === d.cfg.universeId && s.cfg.datastoreName === d.cfg.datastoreName && s.cfg.scope === d.cfg.scope;
+  if (s.cfg.datastoreType !== d.cfg.datastoreType) errors.push({ code: "TYPE_MISMATCH" });
+  const ordered = s.cfg.datastoreType === "ordered";
+  const sameStore =
+    s.cfg.universeId === d.cfg.universeId && s.cfg.datastoreName === d.cfg.datastoreName && s.cfg.scope === d.cfg.scope && s.cfg.datastoreType === d.cfg.datastoreType;
   if (sameStore && m.conflictStrategy !== "rename_key") errors.push({ code: "SAME_DATASTORE" });
   if (s.cfg.universeId === d.cfg.universeId && !sameStore) warnings.push({ code: "SAME_UNIVERSE" });
 
   for (const [role, x] of [["source", s], ["destination", d]] as const) {
     if (x.conn.status !== "active") errors.push({ code: "CONNECTION_INACTIVE", detail: `${role}: ${x.conn.name}` });
     if (!x.conn.keyInfo) continue;
-    const caps = capabilitiesOf(x.conn.keyInfo);
+    const caps = capabilitiesOf(x.conn.keyInfo, ordered);
     const unis = universesOf(x.conn.keyInfo);
     if (!unis.all && unis.ids.length && !unis.ids.includes(x.cfg.universeId)) errors.push({ code: "NO_UNIVERSE_ACCESS", detail: `${role}: ${x.cfg.universeId}` });
     if (!caps.read) errors.push({ code: "MISSING_READ", detail: role });

@@ -54,7 +54,9 @@ async function request<T>(path: string, init: ReqInit = {}): Promise<T> {
     // Kuota DataStore Roblox per experience terpisah untuk baca / tulis / list → antrean limiter terpisah
     if (init.universe) {
       const kind = (init.method ?? "GET") !== "GET" ? "write" : /\/entries\/[^?]/.test(path) ? "read" : "list";
-      await throttle(`${init.universe}:${kind}`);
+      // Ordered punya kuota sendiri → tidak mengantre di belakang migrasi Standard yang sedang jalan
+      const family = path.includes("/ordered-data-stores/") ? "ordered" : "std";
+      await throttle(`${init.universe}:${family}:${kind}`);
     }
     let res: Response;
     try {
@@ -139,7 +141,16 @@ export const DATASTORE_SCOPES = {
 
 export type Capabilities = Record<keyof typeof DATASTORE_SCOPES, boolean>;
 
-export function capabilitiesOf(info: KeyInfo): Capabilities {
+export function capabilitiesOf(info: KeyInfo, ordered = false): Capabilities {
+  if (ordered) {
+    // Scope Ordered (universe.ordered-data-store.scope.entry: read/write). Bila key tak mencantumkan scope
+    // ordered sama sekali (format introspect berbeda), biarkan Roblox yang menolak saat request.
+    const os = info.scopes.filter((s) => s.name.includes("ordered"));
+    if (!os.length) return { listStores: true, listKeys: true, read: true, create: true, update: true };
+    const op = (...ops: string[]) => os.some((s) => s.operations.some((o) => o === "*" || ops.includes(o)));
+    const read = op("read", "list"), write = op("write", "create", "update");
+    return { listStores: false, listKeys: read, read, create: write, update: write };
+  }
   const has = ([scope, op]: readonly [string, string]) =>
     info.scopes.some((s) => s.name === scope && (s.operations.includes(op) || s.operations.includes("*")));
   return Object.fromEntries(Object.entries(DATASTORE_SCOPES).map(([k, v]) => [k, has(v)])) as Capabilities;
@@ -150,7 +161,7 @@ export function universesOf(info: KeyInfo): { ids: string[]; all: boolean } {
   const ids = new Set<string>();
   let all = false;
   for (const s of info.scopes) {
-    if (!s.name.startsWith("universe-datastores")) continue;
+    if (!s.name.startsWith("universe-datastores") && !s.name.includes("ordered")) continue;
     for (const u of s.universeIds) (u === "*" ? (all = true) : ids.add(u));
   }
   return { ids: [...ids], all };
@@ -183,7 +194,9 @@ export async function listDataStores(
   };
 }
 
-export type StoreRef = { universeId: string; datastore: string; scope: string };
+/** `type` kosong = Standard. Ordered memakai endpoint `ordered-data-stores` (nilai integer, tanpa users/attributes). */
+export type StoreRef = { universeId: string; datastore: string; scope: string; type?: "standard" | "ordered" };
+const isOrdered = (ref: StoreRef) => ref.type === "ordered";
 export type Entry = {
   key: string;
   value: unknown;
@@ -196,7 +209,8 @@ export type Entry = {
 };
 
 function entriesPath(ref: StoreRef) {
-  return `/cloud/v2/universes/${encodeURIComponent(ref.universeId)}/data-stores/${encodeURIComponent(ref.datastore)}/scopes/${encodeURIComponent(ref.scope)}/entries`;
+  const kind = isOrdered(ref) ? "ordered-data-stores" : "data-stores";
+  return `/cloud/v2/universes/${encodeURIComponent(ref.universeId)}/${kind}/${encodeURIComponent(ref.datastore)}/scopes/${encodeURIComponent(ref.scope)}/entries`;
 }
 
 /** Id entry dari field `id` atau segmen terakhir `path`. */
@@ -211,6 +225,18 @@ export async function listEntryKeys(
   ref: StoreRef,
   opts: { pageToken?: string; prefix?: string; pageSize?: number } = {},
 ): Promise<{ keys: string[]; nextPageToken: string | null }> {
+  if (isOrdered(ref)) {
+    // Ordered: maks 100/halaman, urut nilai menurun; filter Roblox hanya rentang nilai → prefix disaring di sini
+    const q = new URLSearchParams({ maxPageSize: String(Math.min(opts.pageSize ?? 100, 100)), orderBy: "value desc" });
+    if (opts.pageToken) q.set("pageToken", opts.pageToken);
+    const r = await request<{ orderedDataStoreEntries?: { id?: string; path?: string }[]; nextPageToken?: string }>(`${entriesPath(ref)}?${q}`, {
+      auth,
+      universe: ref.universeId,
+      attempts: 6,
+    });
+    const keys = (r.orderedDataStoreEntries ?? []).map(entryId).filter(Boolean);
+    return { keys: opts.prefix ? keys.filter((k) => k.startsWith(opts.prefix!)) : keys, nextPageToken: r.nextPageToken || null };
+  }
   const q = new URLSearchParams({ maxPageSize: String(opts.pageSize ?? 256) });
   if (opts.pageToken) q.set("pageToken", opts.pageToken);
   if (opts.prefix) q.set("filter", `id.startsWith("${quote(opts.prefix)}")`);
@@ -262,6 +288,16 @@ export async function getEntry(auth: OcAuth, ref: StoreRef, key: string): Promis
 
 type WriteBody = { value: unknown; users: string[]; attributes: Record<string, unknown> | null };
 
+/** Body tulis: Ordered hanya menerima nilai integer. */
+function writePayload(ref: StoreRef, body: WriteBody) {
+  if (isOrdered(ref)) {
+    const n = Number(body.value);
+    if (!Number.isInteger(n)) throw new OpenCloudError("validation", 400, "Ordered DataStore value must be an integer");
+    return { value: n };
+  }
+  return { value: body.value, users: body.users, ...(body.attributes ? { attributes: body.attributes } : {}) };
+}
+
 /** Buat entry baru; gagal (conflict) bila key sudah ada — konflik dicek atomik di sisi Roblox. */
 export async function createEntry(auth: OcAuth, ref: StoreRef, key: string, body: WriteBody): Promise<Entry> {
   try {
@@ -269,7 +305,7 @@ export async function createEntry(auth: OcAuth, ref: StoreRef, key: string, body
       auth,
       universe: ref.universeId,
       method: "POST",
-      body: { value: body.value, users: body.users, ...(body.attributes ? { attributes: body.attributes } : {}) },
+      body: writePayload(ref, body),
       attempts: 6,
     });
     return toEntry(key, r);
@@ -287,7 +323,7 @@ export async function upsertEntry(auth: OcAuth, ref: StoreRef, key: string, body
     auth,
     universe: ref.universeId,
     method: "PATCH",
-    body: { value: body.value, users: body.users, ...(body.attributes ? { attributes: body.attributes } : {}) },
+    body: writePayload(ref, body),
     attempts: 6,
   });
   return toEntry(key, r);

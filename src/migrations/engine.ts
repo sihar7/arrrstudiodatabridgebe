@@ -35,7 +35,7 @@ async function loadCtx(id: string): Promise<Ctx | null> {
   const s = cfgs.find((x) => x.cfg.id === m.sourceConfigId);
   const d = cfgs.find((x) => x.cfg.id === m.destinationConfigId);
   if (!s || !d) return null;
-  const ref = (c: typeof s.cfg): StoreRef => ({ universeId: c.universeId, datastore: c.datastoreName, scope: c.scope });
+  const ref = (c: typeof s.cfg): StoreRef => ({ universeId: c.universeId, datastore: c.datastoreName, scope: c.scope, type: c.datastoreType });
   return { m, src: { ref: ref(s.cfg), conn: s.conn }, dst: { ref: ref(d.cfg), conn: d.conn } };
 }
 

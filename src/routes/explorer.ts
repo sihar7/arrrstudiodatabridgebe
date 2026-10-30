@@ -19,7 +19,7 @@ async function loadConfig(workspaceId: string, id: string) {
     .where(and(eq(datastoreConfigs.id, z.string().uuid().parse(id)), eq(datastoreConfigs.workspaceId, workspaceId)))
     .limit(1);
   if (!row) throw notFound("DataStore config");
-  return { ref: { universeId: row.cfg.universeId, datastore: row.cfg.datastoreName, scope: row.cfg.scope }, conn: row.conn };
+  return { ref: { universeId: row.cfg.universeId, datastore: row.cfg.datastoreName, scope: row.cfg.scope, type: row.cfg.datastoreType }, conn: row.conn };
 }
 
 export const explorerRoutes = new Hono<Env>()

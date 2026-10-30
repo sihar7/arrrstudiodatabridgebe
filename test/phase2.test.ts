@@ -40,11 +40,19 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       ],
     });
   }
-  const m = url.pathname.match(/^\/cloud\/v2\/universes\/(\d+)\/data-stores\/([^/]+)\/scopes\/([^/]+)\/entries(?:\/(.+))?$/);
+  const m = url.pathname.match(/^\/cloud\/v2\/universes\/(\d+)\/(ordered-)?data-stores\/([^/]+)\/scopes\/([^/]+)\/entries(?:\/(.+))?$/);
   if (m) {
-    const [, u, ds, scope, rawKey] = m;
-    const s = store(u!, decodeURIComponent(ds!), decodeURIComponent(scope!));
+    const [, u, ordered, ds, scope, rawKey] = m;
+    // Ordered disimpan terpisah (namespace "ord:") — sama seperti di Roblox
+    const s = store(u!, (ordered ? "ord:" : "") + decodeURIComponent(ds!), decodeURIComponent(scope!));
     const key = rawKey ? decodeURIComponent(rawKey) : url.searchParams.get("id");
+    if (method === "GET" && !rawKey && ordered) {
+      assert.equal(url.searchParams.get("orderBy"), "value desc");
+      const keys = [...s.keys()].sort((a, b) => Number(s.get(b)!.value) - Number(s.get(a)!.value));
+      const start = Number(url.searchParams.get("pageToken") || 0);
+      const next = start + 2 < keys.length ? String(start + 2) : "";
+      return Response.json({ orderedDataStoreEntries: keys.slice(start, start + 2).map((k) => ({ id: k, path: `x/entries/${k}`, value: s.get(k)!.value })), nextPageToken: next });
+    }
     if (method === "GET" && !rawKey) {
       const prefix = url.searchParams.get("filter")?.match(/startsWith\("(.*)"\)/)?.[1] ?? "";
       const keys = [...s.keys()].filter((k) => k.startsWith(prefix)).sort();
@@ -213,6 +221,39 @@ describe("migration engine", () => {
     assert.equal(d.json.error?.code, "MIGRATION_INVALID");
     assert.ok(d.json.error?.details.errors.some((e: { code: string }) => e.code === "PLAN_FEATURE"));
     await db.update(workspaces).set({ plan: "studio" }).where(eq(workspaces.id, ws));
+  });
+});
+
+describe("ordered datastore (leaderboard)", () => {
+  test("copies integer values between ordered stores; type mismatch is rejected", async () => {
+    const lb = store("111111", "ord:SummitLeaderboard_V3");
+    lb.set("101", { value: 50, users: [], attributes: null });
+    lb.set("102", { value: 7, users: [], attributes: null });
+    lb.set("103", { value: 123, users: [], attributes: null });
+    store("222222", "ord:SummitLeaderboard_V3").set("102", { value: 1, users: [], attributes: null }); // sudah ada → dilewati
+    const conn = (await call("GET", "/connections")).json.data[0].id;
+    const mk = (label: string, universeId: string) =>
+      call("POST", `/projects/${projectId}/datastores`, { label, connectionId: conn, universeId, datastoreName: "SummitLeaderboard_V3", datastoreType: "ordered" });
+    const src = await mk("LB src", "111111");
+    assert.equal(src.status, 201, JSON.stringify(src.json));
+    assert.equal(src.json.data.datastoreType, "ordered");
+    const dst = (await mk("LB dst", "222222")).json.data.id;
+
+    const bad = await call("POST", "/migrations", { name: "Mismatch", projectId, sourceConfigId: srcCfg, destinationConfigId: dst });
+    const v = await call("POST", `/migrations/${bad.json.data.id}/validate`);
+    assert.ok(v.json.data.errors.some((e: { code: string }) => e.code === "TYPE_MISMATCH"));
+
+    const r = await call("POST", "/migrations", { name: "Summit LB", projectId, sourceConfigId: src.json.data.id, destinationConfigId: dst });
+    await call("POST", `/migrations/${r.json.data.id}/dry-run`);
+    const dm = await waitDone(r.json.data.id);
+    assert.equal(dm.progress.total, 3);
+    assert.equal(dm.progress.skipped, 1);
+    await call("POST", `/migrations/${r.json.data.id}/start`, {});
+    const m = await waitDone(r.json.data.id);
+    assert.equal(m.status, "completed", JSON.stringify(m));
+    const out = store("222222", "ord:SummitLeaderboard_V3");
+    assert.deepEqual([out.get("101")!.value, out.get("102")!.value, out.get("103")!.value], [50, 1, 123]);
+    assert.equal(store("222222", "SummitLeaderboard_V3").size, 0, "must not touch the standard store with the same name");
   });
 });
 

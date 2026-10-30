@@ -2,6 +2,7 @@ process.env.DATABASE_URL = "memory://";
 process.env.NODE_ENV = "test";
 process.env.ROBLOX_OAUTH_CLIENT_ID = "test-client";
 process.env.ROBLOX_OAUTH_CLIENT_SECRET = "test-secret";
+process.env.ROBLOX_OAUTH_CONNECT_ENABLED = "true";
 
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";

@@ -109,7 +109,7 @@ export const authRoutes = new Hono<Env>()
     return ok(c, { user: presentUser(u!) });
   })
   // Penyedia login yang aktif (tombol "Masuk dengan Roblox" hanya tampil bila app OAuth dikonfigurasi)
-  .get("/providers", (c) => ok(c, { roblox: config.roblox.enabled }))
+  .get("/providers", (c) => ok(c, { roblox: config.roblox.enabled, robloxConnect: config.roblox.connectEnabled }))
   // Lepas tautan Roblox — hanya bila akun punya password (agar tidak terkunci)
   .delete("/roblox", requireAuth, async (c) => {
     const me = c.get("user");

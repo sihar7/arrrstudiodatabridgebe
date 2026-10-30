@@ -23,6 +23,9 @@ const schema = z.object({
     .default(
       "openid profile universe-datastores.control:list universe-datastores.objects:list universe-datastores.objects:read universe-datastores.objects:create universe-datastores.objects:update",
     ),
+  // "Hubungkan dengan Roblox" (OAuth untuk DataStore) hanya bila app OAuth diizinkan scope universe-datastores.*.
+  // Default mati: banyak app hanya boleh openid/profile → akses DataStore lewat API key.
+  ROBLOX_OAUTH_CONNECT_ENABLED: z.enum(["true", "false"]).optional().default("false"),
   // Antrean migrasi: Redis (Railway) → BullMQ; kosong → runner in-process (dev/tes)
   REDIS_URL: z.string().optional().default(""),
   // Jalankan worker migrasi di proses API (default ya; set false bila worker jadi service terpisah)
@@ -80,6 +83,7 @@ export const config = {
     clientSecret: env.ROBLOX_OAUTH_CLIENT_SECRET,
     connectScopes: env.ROBLOX_OAUTH_CONNECT_SCOPES,
     enabled: !!(env.ROBLOX_OAUTH_CLIENT_ID && env.ROBLOX_OAUTH_CLIENT_SECRET),
+    connectEnabled: !!(env.ROBLOX_OAUTH_CLIENT_ID && env.ROBLOX_OAUTH_CLIENT_SECRET) && env.ROBLOX_OAUTH_CONNECT_ENABLED === "true",
   },
   redisUrl: env.REDIS_URL,
   runWorker: env.RUN_WORKER === "true",

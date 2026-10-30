@@ -79,6 +79,7 @@ export const robloxAuthRoutes = new Hono<Env>()
       userId = u.id;
     }
     if (intent === "connect") {
+      if (!config.roblox.connectEnabled) return fail("ROBLOX_CONNECT_DISABLED", "/dashboard/connections");
       if (!workspaceId) return fail("WORKSPACE_REQUIRED", "/dashboard/connections");
       const [m] = await db
         .select({ role: workspaceMembers.role })

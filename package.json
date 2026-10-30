@@ -1,0 +1,35 @@
+{
+  "name": "arrr-databridge-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ARRR DataBridge API — auth, workspace, koneksi Roblox Open Cloud, project & konfigurasi DataStore",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.13",
+    "@hono/node-server": "^2.1.5",
+    "bullmq": "^6.5.1",
+    "dotenv": "^18.0.9",
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.14",
+    "ioredis": "^6.0.0",
+    "pg": "^8.23.1",
+    "tsx": "^4.23.15",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11",
+    "typescript": "^7.0.2"
+  }
+}

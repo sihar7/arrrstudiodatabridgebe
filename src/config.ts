@@ -1,0 +1,75 @@
+import "dotenv/config";
+import { z } from "zod";
+
+// Konfigurasi API — semua nilai dari env, divalidasi sekali saat start.
+const schema = z.object({
+  NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+  PORT: z.coerce.number().int().default(8080),
+  APP_URL: z.string().url().default("http://localhost:3000"),
+  DATABASE_URL: z.string().optional().default(""),
+  ENCRYPTION_KEY: z.string().optional().default(""),
+  ENCRYPTION_KEYS_PREVIOUS: z.string().optional().default(""),
+  COOKIE_SECURE: z.enum(["true", "false"]).optional(),
+  // Roblox OAuth 2.0 app (Creator Dashboard → OAuth 2.0 Apps). Kosong = tombol Roblox disembunyikan.
+  ROBLOX_OAUTH_CLIENT_ID: z.string().optional().default(""),
+  ROBLOX_OAUTH_CLIENT_SECRET: z.string().optional().default(""),
+  // Scope "Connect with Roblox" (harus juga dicentang di konfigurasi app). Bisa disesuaikan tanpa ubah kode.
+  ROBLOX_OAUTH_CONNECT_SCOPES: z
+    .string()
+    .optional()
+    .default(
+      "openid profile universe-datastores.control:list universe-datastores.objects:list universe-datastores.objects:read universe-datastores.objects:create universe-datastores.objects:update",
+    ),
+  // Antrean migrasi: Redis (Railway) → BullMQ; kosong → runner in-process (dev/tes)
+  REDIS_URL: z.string().optional().default(""),
+  // Jalankan worker migrasi di proses API (default ya; set false bila worker jadi service terpisah)
+  RUN_WORKER: z.enum(["true", "false"]).optional().default("true"),
+  // Batas request Open Cloud per universe per detik (kuota DataStore dibagi dengan server live)
+  OC_RPS_PER_UNIVERSE: z.coerce.number().positive().default(4),
+  // Key paralel per job migrasi
+  MIGRATION_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(4),
+  // Admin platform (panel /admin): email dan/atau username Roblox, dipisah koma
+  ADMIN_EMAILS: z.string().optional().default(""),
+  ADMIN_ROBLOX_USERNAMES: z.string().optional().default(""),
+  // Gambar QRIS statis untuk pembayaran manual (URL publik, mis. /brand/qris.png di web)
+  QRIS_IMAGE_URL: z.string().optional().default(""),
+  QRIS_MERCHANT_NAME: z.string().optional().default("ARRR Studio"),
+});
+
+const env = schema.parse(process.env);
+const isProd = env.NODE_ENV === "production";
+
+function parseKey(b64: string): Buffer {
+  const key = Buffer.from(b64, "base64");
+  if (key.length !== 32) throw new Error("ENCRYPTION_KEY harus 32 byte (base64)");
+  return key;
+}
+
+if (isProd && !env.ENCRYPTION_KEY) throw new Error("ENCRYPTION_KEY wajib di produksi");
+if (isProd && !env.DATABASE_URL) throw new Error("DATABASE_URL wajib di produksi");
+
+export const config = {
+  isProd,
+  port: env.PORT,
+  appUrl: env.APP_URL,
+  databaseUrl: env.DATABASE_URL,
+  // Dev tanpa kunci → kunci tetap khusus dev (JANGAN dipakai produksi; dicegah di atas)
+  encryptionKey: env.ENCRYPTION_KEY ? parseKey(env.ENCRYPTION_KEY) : Buffer.alloc(32, 7),
+  previousKeys: env.ENCRYPTION_KEYS_PREVIOUS.split(",").filter(Boolean).map(parseKey),
+  cookieSecure: env.COOKIE_SECURE ? env.COOKIE_SECURE === "true" : isProd,
+  sessionCookie: "dbr_session",
+  roblox: {
+    clientId: env.ROBLOX_OAUTH_CLIENT_ID,
+    clientSecret: env.ROBLOX_OAUTH_CLIENT_SECRET,
+    connectScopes: env.ROBLOX_OAUTH_CONNECT_SCOPES,
+    enabled: !!(env.ROBLOX_OAUTH_CLIENT_ID && env.ROBLOX_OAUTH_CLIENT_SECRET),
+  },
+  redisUrl: env.REDIS_URL,
+  runWorker: env.RUN_WORKER === "true",
+  ocRps: env.OC_RPS_PER_UNIVERSE,
+  migrationConcurrency: env.MIGRATION_CONCURRENCY,
+  adminEmails: env.ADMIN_EMAILS.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean),
+  adminRobloxUsernames: env.ADMIN_ROBLOX_USERNAMES.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean),
+  qris: { imageUrl: env.QRIS_IMAGE_URL, merchant: env.QRIS_MERCHANT_NAME },
+  sessionTtlDays: 30,
+};

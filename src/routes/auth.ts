@@ -118,7 +118,11 @@ export const authRoutes = new Hono<Env>()
   })
   // Penyedia login yang aktif (tombol "Masuk dengan Roblox" hanya tampil bila app OAuth dikonfigurasi)
   .get("/providers", (c) =>
-    ok(c, { discord: config.discord.enabled, roblox: config.roblox.loginEnabled, robloxConnect: config.roblox.connectEnabled, emailSignup: config.emailSignup }),
+    ok(c, {
+      discord: config.discord.enabled,
+      discordInvite: config.discord.guildId ? config.discord.inviteUrl : null,
+      roblox: config.roblox.loginEnabled, robloxConnect: config.roblox.connectEnabled, emailSignup: config.emailSignup,
+    }),
   )
   // Lepas tautan Roblox — hanya bila akun punya password (agar tidak terkunci)
   .delete("/roblox", requireAuth, async (c) => {

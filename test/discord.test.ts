@@ -75,7 +75,7 @@ describe("Discord login & email signup", () => {
     const admin = await call("", "POST", "/auth/login", { email: "boss@arrrstudio.com", password: "correct-horse-battery" });
     assert.equal(admin.status, 200);
     const p = await call("", "GET", "/auth/providers");
-    assert.deepEqual(p.json.data, { discord: true, roblox: false, robloxConnect: false, emailSignup: false });
+    assert.deepEqual(p.json.data, { discord: true, discordInvite: null, roblox: false, robloxConnect: false, emailSignup: false });
   });
 });
 

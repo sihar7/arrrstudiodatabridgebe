@@ -26,6 +26,11 @@ const schema = z.object({
   // Login user via Discord (Developer Portal → OAuth2). Redirect: <APP_URL>/api/v1/auth/discord/callback
   DISCORD_CLIENT_ID: z.string().optional().default(""),
   DISCORD_CLIENT_SECRET: z.string().optional().default(""),
+  // Wajib member server Discord (sama seperti converter). Kosong = tidak dicek.
+  // DISCORD_BOT_TOKEN (bot dari app yang sama, sudah di server, izin Create Invite) → user yang belum join dimasukkan otomatis.
+  DISCORD_GUILD_ID: z.string().optional().default(""),
+  DISCORD_BOT_TOKEN: z.string().optional().default(""),
+  DISCORD_INVITE_URL: z.string().optional().default("https://discord.gg/mtn3YmwjV"),
   // Daftar/login email untuk user biasa (default mati: user pakai Discord; admin tetap email+password)
   EMAIL_SIGNUP_ENABLED: z.enum(["true", "false"]).optional().default("false"),
   // "Masuk dengan Roblox" untuk user (default mati)
@@ -96,7 +101,14 @@ export const config = {
     loginEnabled: !!(env.ROBLOX_OAUTH_CLIENT_ID && env.ROBLOX_OAUTH_CLIENT_SECRET) && env.ROBLOX_LOGIN_ENABLED === "true",
     connectEnabled: !!(env.ROBLOX_OAUTH_CLIENT_ID && env.ROBLOX_OAUTH_CLIENT_SECRET) && env.ROBLOX_OAUTH_CONNECT_ENABLED === "true",
   },
-  discord: { clientId: env.DISCORD_CLIENT_ID, clientSecret: env.DISCORD_CLIENT_SECRET, enabled: !!(env.DISCORD_CLIENT_ID && env.DISCORD_CLIENT_SECRET) },
+  discord: {
+    clientId: env.DISCORD_CLIENT_ID,
+    clientSecret: env.DISCORD_CLIENT_SECRET,
+    enabled: !!(env.DISCORD_CLIENT_ID && env.DISCORD_CLIENT_SECRET),
+    guildId: env.DISCORD_GUILD_ID,
+    botToken: env.DISCORD_BOT_TOKEN,
+    inviteUrl: env.DISCORD_INVITE_URL,
+  },
   emailSignup: env.EMAIL_SIGNUP_ENABLED === "true",
   redisUrl: env.REDIS_URL,
   runWorker: env.RUN_WORKER === "true",

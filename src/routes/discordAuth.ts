@@ -11,6 +11,7 @@ import { createAccount, startSession } from "./auth";
 
 // "Masuk dengan Discord" — login utama user (authorization code, scope identify).
 // Email Discord tidak diminta/disimpan, sehingga akun Discord tidak pernah bisa cocok dengan email admin.
+// DISCORD_GUILD_ID diisi → wajib member server ARRR Studio (bot token → dimasukkan otomatis), sama seperti converter.
 
 const API = "https://discord.com/api/v10";
 const STATE_COOKIE = "dbr_discord";
@@ -18,6 +19,32 @@ const STATE_COOKIE = "dbr_discord";
 const web = (path: string) => `${config.appUrl.replace(/\/$/, "")}${path}`;
 const redirectUri = () => web("/api/v1/auth/discord/callback");
 const safeNext = (n?: string | null) => (n && n.startsWith("/") && !n.startsWith("//") ? n : undefined);
+
+const d = config.discord;
+const scope = () => (d.guildId ? `identify ${d.botToken ? "guilds.join" : "guilds.members.read"}` : "identify");
+
+/** true kalau user member server wajib (atau berhasil dimasukkan otomatis) */
+async function ensureMember(token: string, userId: string): Promise<boolean> {
+  if (!d.guildId) return true;
+  if (d.botToken) {
+    // PUT guild member: 201 = baru dimasukkan, 204 = sudah member
+    const res = await fetch(`${API}/guilds/${d.guildId}/members/${userId}`, {
+      method: "PUT",
+      headers: { authorization: `Bot ${d.botToken}`, "content-type": "application/json" },
+      body: JSON.stringify({ access_token: token }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (res.status === 201 || res.status === 204) return true;
+    // 403 = bot tanpa izin Create Invite / beda app, 404 = guild salah / bot belum diundang, 401 = token bot salah
+    console.warn(`[discord] gagal memasukkan user ke server ${d.guildId}: HTTP ${res.status} ${(await res.text()).slice(0, 300)}`);
+    return false;
+  }
+  const res = await fetch(`${API}/users/@me/guilds/${d.guildId}/member`, {
+    headers: { authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(15_000),
+  });
+  return res.ok;
+}
 
 type DiscordUser = { id: string; username: string; global_name?: string | null; avatar?: string | null };
 
@@ -33,7 +60,7 @@ export const discordAuthRoutes = new Hono<Env>()
       path: "/",
       maxAge: 600,
     });
-    const q = new URLSearchParams({ client_id: config.discord.clientId, redirect_uri: redirectUri(), response_type: "code", scope: "identify", state, prompt: "none" });
+    const q = new URLSearchParams({ client_id: config.discord.clientId, redirect_uri: redirectUri(), response_type: "code", scope: scope(), state, prompt: "none" });
     return c.redirect(`https://discord.com/oauth2/authorize?${q}`);
   })
   .get("/callback", async (c) => {
@@ -52,6 +79,7 @@ export const discordAuthRoutes = new Hono<Env>()
     if (!code) return fail("OAUTH_STATE");
 
     let profile: DiscordUser;
+    let member = false;
     try {
       const tok = await fetch(`${API}/oauth2/token`, {
         method: "POST",
@@ -70,7 +98,8 @@ export const discordAuthRoutes = new Hono<Env>()
       const me = await fetch(`${API}/users/@me`, { headers: { authorization: `Bearer ${t.access_token}` }, signal: AbortSignal.timeout(15_000) });
       if (!me.ok) return fail("DISCORD_FAILED");
       profile = (await me.json()) as DiscordUser;
-      // Token hanya untuk membaca profil sekali — langsung dicabut
+      member = await ensureMember(t.access_token, profile.id).catch(() => false);
+      // Token hanya untuk membaca profil & cek member sekali — langsung dicabut
       void fetch(`${API}/oauth2/token/revoke`, {
         method: "POST",
         headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -79,6 +108,7 @@ export const discordAuthRoutes = new Hono<Env>()
     } catch {
       return fail("DISCORD_FAILED");
     }
+    if (!member) return fail("NOT_MEMBER");
 
     const fields = {
       discordUserId: profile.id,
